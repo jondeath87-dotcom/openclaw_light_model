@@ -49,6 +49,18 @@ export function buildEmbeddedSystemPrompt(params: {
   contextFiles?: EmbeddedContextFile[];
   memoryCitationsMode?: MemoryCitationsMode;
 }): string {
+  const model = params.runtimeInfo.model.toLowerCase();
+  const isSmallModel =
+    model.includes("7b") ||
+    model.includes("8b") ||
+    model.includes("mini") ||
+    model.includes("lite") ||
+    model.includes("deepseek-r1-distill-qwen-7b") || // Specific common Ollama models
+    model.includes("llama-3.1-8b") ||
+    model.includes("mistral-7b");
+
+  const promptMode = params.promptMode ?? (isSmallModel ? "lite" : "full");
+
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
     defaultThinkLevel: params.defaultThinkLevel,
@@ -62,7 +74,7 @@ export function buildEmbeddedSystemPrompt(params: {
     ttsHint: params.ttsHint,
     workspaceNotes: params.workspaceNotes,
     reactionGuidance: params.reactionGuidance,
-    promptMode: params.promptMode,
+    promptMode,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,

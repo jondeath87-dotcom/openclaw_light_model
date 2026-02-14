@@ -425,4 +425,36 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("## Reactions");
     expect(prompt).toContain("Reactions are enabled for Telegram in MINIMAL mode.");
   });
+
+  it("streamlines the prompt in lite mode", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "lite",
+      skillsPrompt: "<available_skills>...</available_skills>",
+      docsPath: "/tmp/openclaw/docs",
+      toolNames: ["read", "write", "message"],
+      extraSystemPrompt: "Lite details",
+    });
+
+    // Sections that should be simplified
+    expect(prompt).toContain("## Safety");
+    expect(prompt).toContain("Prioritize safety and oversight.");
+    expect(prompt).not.toContain("Inspiration by Anthropic's constitution");
+
+    // Sections that should be present but simplified
+    expect(prompt).toContain("## Documentation");
+    expect(prompt).toContain("OpenClaw docs: /tmp/openclaw/docs");
+    expect(prompt).not.toContain("Mirror: https://docs.openclaw.ai");
+
+    // Sections that should be omitted
+    expect(prompt).not.toContain("## Skills");
+    expect(prompt).not.toContain("## Memory Recall");
+    expect(prompt).not.toContain("## OpenClaw Self-Update");
+    expect(prompt).not.toContain("## OpenClaw CLI Quick Reference");
+    expect(prompt).not.toContain("## Silent Replies");
+
+    // Context should still be present
+    expect(prompt).toContain("## Group Chat Context");
+    expect(prompt).toContain("Lite details");
+  });
 });

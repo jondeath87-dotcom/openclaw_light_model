@@ -9,16 +9,18 @@ import { listDeliverableMessageChannels } from "../utils/message-channel.js";
  * Controls which hardcoded sections are included in the system prompt.
  * - "full": All sections (default, for main agent)
  * - "minimal": Reduced sections (Tooling, Workspace, Runtime) - used for subagents
+ * - "lite": Compressed sections for smaller (e.g., 7B) models
  * - "none": Just basic identity line, no sections
  */
-export type PromptMode = "full" | "minimal" | "none";
+export type PromptMode = "full" | "minimal" | "lite" | "none";
 
 function buildSkillsSection(params: {
   skillsPrompt?: string;
   isMinimal: boolean;
+  isLite: boolean;
   readToolName: string;
 }) {
-  if (params.isMinimal) {
+  if (params.isMinimal || params.isLite) {
     return [];
   }
   const trimmed = params.skillsPrompt?.trim();
@@ -39,10 +41,11 @@ function buildSkillsSection(params: {
 
 function buildMemorySection(params: {
   isMinimal: boolean;
+  isLite: boolean;
   availableTools: Set<string>;
   citationsMode?: MemoryCitationsMode;
 }) {
-  if (params.isMinimal) {
+  if (params.isMinimal || params.isLite) {
     return [];
   }
   if (!params.availableTools.has("memory_search") && !params.availableTools.has("memory_get")) {
@@ -143,10 +146,18 @@ function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
   return ["## Voice (TTS)", hint, ""];
 }
 
-function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
+function buildDocsSection(params: {
+  docsPath?: string;
+  isMinimal: boolean;
+  isLite: boolean;
+  readToolName: string;
+}) {
   const docsPath = params.docsPath?.trim();
   if (!docsPath || params.isMinimal) {
     return [];
+  }
+  if (params.isLite) {
+    return ["## Documentation", `OpenClaw docs: ${docsPath}`, ""];
   }
   return [
     "## Documentation",
@@ -347,27 +358,37 @@ export function buildAgentSystemPrompt(params: {
   const inlineButtonsEnabled = runtimeCapabilitiesLower.has("inlinebuttons");
   const messageChannelOptions = listDeliverableMessageChannels().join("|");
   const promptMode = params.promptMode ?? "full";
+  const isLite = promptMode === "lite";
   const isMinimal = promptMode === "minimal" || promptMode === "none";
-  const safetySection = [
-    "## Safety",
-    "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
-    "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
-    "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
-    "",
-  ];
+  const safetySection = isLite
+    ? [
+        "## Safety",
+        "Prioritize safety and oversight. Do not bypass safeguards or pursue independent goals.",
+        "",
+      ]
+    : [
+        "## Safety",
+        "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
+        "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
+        "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
+        "",
+      ];
   const skillsSection = buildSkillsSection({
     skillsPrompt,
     isMinimal,
+    isLite,
     readToolName,
   });
   const memorySection = buildMemorySection({
     isMinimal,
+    isLite,
     availableTools,
     citationsMode: params.memoryCitationsMode,
   });
   const docsSection = buildDocsSection({
     docsPath: params.docsPath,
     isMinimal,
+    isLite,
     readToolName,
   });
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
@@ -412,20 +433,9 @@ export function buildAgentSystemPrompt(params: {
     "Use plain human language for narration unless in a technical context.",
     "",
     ...safetySection,
-    "## OpenClaw CLI Quick Reference",
-    "OpenClaw is controlled via subcommands. Do not invent commands.",
-    "To manage the Gateway daemon service (start/stop/restart):",
-    "- openclaw gateway status",
-    "- openclaw gateway start",
-    "- openclaw gateway stop",
-    "- openclaw gateway restart",
-    "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
-    "",
-    ...skillsSection,
-    ...memorySection,
-    // Skip self-update for subagent/none modes
-    hasGateway && !isMinimal ? "## OpenClaw Self-Update" : "",
-    hasGateway && !isMinimal
+    // Skip self-update for subagent/none/lite modes
+    hasGateway && !isMinimal && !isLite ? "## OpenClaw Self-Update" : "",
+    hasGateway && !isMinimal && !isLite
       ? [
           "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
           "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
@@ -433,7 +443,23 @@ export function buildAgentSystemPrompt(params: {
           "After restart, OpenClaw pings the last active session automatically.",
         ].join("\n")
       : "",
-    hasGateway && !isMinimal ? "" : "",
+    hasGateway && !isMinimal && !isLite ? "" : "",
+    isLite ? "" : "## OpenClaw CLI Quick Reference",
+    isLite
+      ? ""
+      : [
+          "OpenClaw is controlled via subcommands. Do not invent commands.",
+          "To manage the Gateway daemon service (start/stop/restart):",
+          "- openclaw gateway status",
+          "- openclaw gateway start",
+          "- openclaw gateway stop",
+          "- openclaw gateway restart",
+          "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
+        ].join("\n"),
+    isLite ? "" : "",
+    "",
+    ...skillsSection,
+    ...memorySection,
     "",
     // Skip model aliases for subagent/none modes
     params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
@@ -568,8 +594,8 @@ export function buildAgentSystemPrompt(params: {
     }
   }
 
-  // Skip silent replies for subagent/none modes
-  if (!isMinimal) {
+  // Skip silent replies for subagent/none/lite modes
+  if (!isMinimal && !isLite) {
     lines.push(
       "## Silent Replies",
       `When you have nothing to say, respond with ONLY: ${SILENT_REPLY_TOKEN}`,
