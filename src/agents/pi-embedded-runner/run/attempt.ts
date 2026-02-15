@@ -652,6 +652,43 @@ export async function runEmbeddedAttempt(
         });
       };
 
+      // JSON hallucination filter for lite mode
+      // Small models often output JSON tool calls like {"name": "tts", "arguments": {"text": "..."}}
+      // instead of plain text. This filter extracts the text content.
+      const createJsonFilter = (
+        originalCallback?: (payload: {
+          text?: string;
+          mediaUrls?: string[];
+        }) => void | Promise<void>,
+      ) => {
+        if (promptMode !== "lite" || !originalCallback) {
+          return originalCallback;
+        }
+
+        return async (payload: { text?: string; mediaUrls?: string[] }) => {
+          if (!payload.text) {
+            return originalCallback(payload);
+          }
+
+          let filteredText = payload.text;
+
+          // Pattern 1: {"name": "tts", "arguments": {"text": "..."}}
+          // Pattern 2: {"name": "send_message", "arguments": {"text": "..."}}
+          const jsonPattern =
+            /\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"[^}]*\}\s*\}/g;
+          const match = jsonPattern.exec(filteredText);
+
+          if (match && match[1]) {
+            console.log(
+              `[openclaw] 🔧 Lite mode: Filtered hallucinated JSON tool call, extracted text: "${match[1]}"`,
+            );
+            filteredText = match[1];
+          }
+
+          return originalCallback({ ...payload, text: filteredText });
+        };
+      };
+
       const subscription = subscribeEmbeddedPiSession({
         session: activeSession,
         runId: params.runId,
@@ -666,7 +703,7 @@ export async function runEmbeddedAttempt(
         onBlockReplyFlush: params.onBlockReplyFlush,
         blockReplyBreak: params.blockReplyBreak,
         blockReplyChunking: params.blockReplyChunking,
-        onPartialReply: params.onPartialReply,
+        onPartialReply: createJsonFilter(params.onPartialReply),
         onAssistantMessageStart: params.onAssistantMessageStart,
         onAgentEvent: params.onAgentEvent,
         enforceFinalTag: params.enforceFinalTag,
