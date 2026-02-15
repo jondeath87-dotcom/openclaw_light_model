@@ -418,37 +418,63 @@ export function buildAgentSystemPrompt(params: {
   const docsLine = params.docsPath ? `Docs: ${params.docsPath}` : "";
   const ttsLine = params.ttsHint ? `TTS: ${params.ttsHint}` : "";
 
+  if (isLite) {
+    const liteLines = [
+      "You are OpenClaw, a helpful and friendly personal assistant. Your main goal is to talk to the user and help with tasks.",
+      "CORE RULE: You MUST always start your reply with a natural human sentence. Talk to the user directly in plain language. Do not output only code.",
+      "",
+      `It is currently ${params.userTime || "unknown"} in ${params.userTimezone || "unknown"}.`,
+      "",
+      "You have access to some internal tools to help the user. If you use a tool, explain briefly what you are doing first.",
+      "Internal Tools:",
+      toolLines.length > 0
+        ? toolLines.join("\n")
+        : "- read, ls, exec, find, grep (standard file/command tools)",
+      "",
+      ...safetySection,
+    ];
+
+    if (extraSystemPrompt) {
+      liteLines.push("Context:", extraSystemPrompt, "");
+    }
+
+    const contextFiles = params.contextFiles ?? [];
+    if (contextFiles.length > 0) {
+      liteLines.push("Project Context (injected files):");
+      for (const file of contextFiles) {
+        liteLines.push(`- ${file.path}:\n${file.content}\n`);
+      }
+    }
+
+    liteLines.push("Reply directly in this chat. Keep it conversational.");
+
+    return liteLines.filter(Boolean).join("\n");
+  }
+
   const lines = [
     "You are a personal assistant running inside OpenClaw.",
-    isLite
-      ? "CORE RULE: You must ALWAYS talk to the user first. Provide a brief conversational explanation in plain language before any tool calls. DO NOT output code blocks without explanation."
-      : "",
     "",
     "## Environment",
     runtimeLine,
     isMinimal ? "" : `Model: ${safeRuntimeInfo.model || "unknown"}`,
     isMinimal ? "" : `Time: ${params.userTime ?? "unknown"}`,
-    isLite ? "" : `Shell: ${safeRuntimeInfo.shell ?? "unknown"}`,
-    isLite ? "" : `Workspace: ${params.workspaceDir}`,
-    isLite ? "" : docsLine,
-    isLite ? "" : ttsLine,
+    `Shell: ${safeRuntimeInfo.shell ?? "unknown"}`,
+    `Workspace: ${params.workspaceDir}`,
+    docsLine,
+    ttsLine,
     "",
     "## Tooling",
     ...toolLines,
     "",
     "## Tool Call Style",
-    isLite
-      ? "Always start your reply with a human explanation. Talk to the user first."
-      : "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    isLite
-      ? ""
-      : 'Silent: for background work, use <reply silent="true"> (no text) or <reply thought="..."> (internal only).',
-    isLite ? "" : "Internal reasoning: wrap in <thought> tags.",
+    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+    'Silent: for background work, use <reply silent="true"> (no text) or <reply thought="..."> (internal only).',
+    "Internal reasoning: wrap in <thought> tags.",
     "",
     ...safetySection,
     // Skip self-update for subagent/none/lite modes
-    hasGateway && !isMinimal && !isLite ? "## OpenClaw Self-Update" : "",
-    hasGateway && !isMinimal && !isLite
+    hasGateway && !isMinimal ? "## OpenClaw Self-Update" : "",
+    hasGateway && !isMinimal
       ? [
           "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
           "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
@@ -456,19 +482,16 @@ export function buildAgentSystemPrompt(params: {
           "After restart, OpenClaw pings the last active session automatically.",
         ].join("\n")
       : "",
-    hasGateway && !isMinimal && !isLite ? "" : "",
-    isLite ? "" : "## OpenClaw CLI Quick Reference",
-    isLite
-      ? ""
-      : [
-          "OpenClaw is controlled via subcommands. Do not invent commands.",
-          "To manage the Gateway daemon service (start/stop/restart):",
-          "- openclaw gateway status",
-          "- openclaw gateway start",
-          "- openclaw gateway stop",
-          "- openclaw gateway restart",
-          "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
-        ].join("\n"),
+    "## OpenClaw CLI Quick Reference",
+    [
+      "OpenClaw is controlled via subcommands. Do not invent commands.",
+      "To manage the Gateway daemon service (start/stop/restart):",
+      "- openclaw gateway status",
+      "- openclaw gateway start",
+      "- openclaw gateway stop",
+      "- openclaw gateway restart",
+      "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
+    ].join("\n"),
     isLite ? "" : "",
     "",
     ...skillsSection,
