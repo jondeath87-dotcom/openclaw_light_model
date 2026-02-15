@@ -357,6 +357,10 @@ export async function runEmbeddedAttempt(
       : isSmallModel
         ? "lite"
         : undefined;
+
+    console.log(
+      `[openclaw] 🔍 Model: ${params.modelId}, isSmallModel: ${isSmallModel}, promptMode: ${promptMode}`,
+    );
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
@@ -493,6 +497,9 @@ export async function runEmbeddedAttempt(
       const allCustomTools = [...customTools, ...clientToolDefs];
 
       const useNativeTools = promptMode !== "lite";
+      console.log(
+        `[openclaw] 🔧 useNativeTools: ${useNativeTools}, builtInTools: ${builtInTools.length}, customTools: ${allCustomTools.length}`,
+      );
       ({ session } = await createAgentSession({
         cwd: resolvedWorkspace,
         agentDir,
