@@ -671,18 +671,37 @@ export async function runEmbeddedAttempt(
           }
 
           let filteredText = payload.text;
+          const originalText = payload.text;
 
-          // Pattern 1: {"name": "tts", "arguments": {"text": "..."}}
-          // Pattern 2: {"name": "send_message", "arguments": {"text": "..."}}
-          const jsonPattern =
-            /\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"[^}]*\}\s*\}/g;
-          const match = jsonPattern.exec(filteredText);
+          // Try multiple patterns to extract text from hallucinated JSON
+          const patterns = [
+            // Pattern 1: {"name": "tts", "arguments": {"text": "..."}}
+            /\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"[^}]*\}\s*\}/,
+            // Pattern 2: {"name": "...", "arguments": {"channel": "...", "text": "..."}}
+            /"text"\s*:\s*"([^"]+)"/,
+            // Pattern 3: Just extract any "text": "..." field
+            /"text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/,
+          ];
 
-          if (match && match[1]) {
+          for (const pattern of patterns) {
+            const match = pattern.exec(filteredText);
+            if (match && match[1] && match[1].trim()) {
+              console.log(
+                `[openclaw] 🔧 Lite mode: Filtered JSON (original: "${originalText.substring(0, 100)}..."), extracted: "${match[1]}"`,
+              );
+              filteredText = match[1];
+              break;
+            }
+          }
+
+          // If we still have JSON-like content but couldn't extract text, log it
+          if (
+            filteredText === originalText &&
+            (filteredText.includes('{"name"') || filteredText.includes('"arguments"'))
+          ) {
             console.log(
-              `[openclaw] 🔧 Lite mode: Filtered hallucinated JSON tool call, extracted text: "${match[1]}"`,
+              `[openclaw] ⚠️  Lite mode: Could not extract text from JSON: "${originalText.substring(0, 200)}"`,
             );
-            filteredText = match[1];
           }
 
           return originalCallback({ ...payload, text: filteredText });
