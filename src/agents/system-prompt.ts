@@ -331,8 +331,6 @@ export function buildAgentSystemPrompt(params: {
 
   const hasGateway = availableTools.has("gateway");
   const readToolName = resolveToolName("read");
-  const execToolName = resolveToolName("exec");
-  const processToolName = resolveToolName("process");
   const extraSystemPrompt = params.extraSystemPrompt?.trim();
   const ownerNumbers = (params.ownerNumbers ?? []).map((value) => value.trim()).filter(Boolean);
   const ownerLine =
@@ -407,7 +405,7 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
-  const safeRuntimeInfo = params.runtimeInfo || ({} as any);
+  const safeRuntimeInfo = params.runtimeInfo || ({} as Record<string, any>);
   const runtimeLine = [
     safeRuntimeInfo.host ? `Host: ${safeRuntimeInfo.host}` : null,
     safeRuntimeInfo.os ? `OS: ${safeRuntimeInfo.os}` : null,
@@ -432,6 +430,8 @@ export function buildAgentSystemPrompt(params: {
     isMinimal ? "" : `Time: ${params.userTime ?? "unknown"}`,
     isLite ? "" : `Shell: ${safeRuntimeInfo.shell ?? "unknown"}`,
     isLite ? "" : `Workspace: ${params.workspaceDir}`,
+    isLite ? "" : docsLine,
+    isLite ? "" : ttsLine,
     "",
     "## Tooling",
     ...toolLines,
