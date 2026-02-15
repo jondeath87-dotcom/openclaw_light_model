@@ -407,43 +407,43 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
+  const safeRuntimeInfo = params.runtimeInfo || ({} as any);
+  const runtimeLine = [
+    safeRuntimeInfo.host ? `Host: ${safeRuntimeInfo.host}` : null,
+    safeRuntimeInfo.os ? `OS: ${safeRuntimeInfo.os}` : null,
+    safeRuntimeInfo.arch ? `Arch: ${safeRuntimeInfo.arch}` : null,
+    safeRuntimeInfo.node ? `Node: ${safeRuntimeInfo.node}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const docsLine = params.docsPath ? `Docs: ${params.docsPath}` : "";
+  const ttsLine = params.ttsHint ? `TTS: ${params.ttsHint}` : "";
+
   const lines = [
     "You are a personal assistant running inside OpenClaw.",
+    isLite
+      ? "CORE RULE: You must ALWAYS talk to the user first. Provide a brief conversational explanation in plain language before any tool calls. DO NOT output code blocks without explanation."
+      : "",
+    "",
+    "## Environment",
+    runtimeLine,
+    isMinimal ? "" : `Model: ${safeRuntimeInfo.model || "unknown"}`,
+    isMinimal ? "" : `Time: ${params.userTime ?? "unknown"}`,
+    isLite ? "" : `Shell: ${safeRuntimeInfo.shell ?? "unknown"}`,
+    isLite ? "" : `Workspace: ${params.workspaceDir}`,
     "",
     "## Tooling",
-    "Tool availability (filtered by policy):",
-    "Tool names are case-sensitive. Call tools exactly as listed.",
-    toolLines.length > 0
-      ? toolLines.join("\n")
-      : [
-          "Pi lists the standard tools above. This runtime enables:",
-          "- grep: search file contents for patterns",
-          "- find: find files by glob pattern",
-          "- ls: list directory contents",
-          "- apply_patch: apply multi-file patches",
-          `- ${execToolName}: run shell commands (supports background via yieldMs/background)`,
-          `- ${processToolName}: manage background exec sessions`,
-          "- browser: control OpenClaw's dedicated browser",
-          "- canvas: present/eval/snapshot the Canvas",
-          "- nodes: list/describe/notify/camera/screen on paired nodes",
-          "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
-          "- sessions_list: list sessions",
-          "- sessions_history: fetch session history",
-          "- sessions_send: send to another session",
-          '- session_status: show usage/time/model state and answer "what model are we using?"',
-        ].join("\n"),
-    "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
-    "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
+    ...toolLines,
     "",
     "## Tool Call Style",
     isLite
-      ? "MANDATORY: Always start your reply with a conversational explanation in plain human language. Do not output only code blocks. Talk to the user first."
+      ? "Always start your reply with a human explanation. Talk to the user first."
       : "Default: do not narrate routine, low-risk tool calls (just call the tool).",
     isLite
       ? ""
-      : "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    isLite ? "" : "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    isLite ? "" : "Use plain human language for narration unless in a technical context.",
+      : 'Silent: for background work, use <reply silent="true"> (no text) or <reply thought="..."> (internal only).',
+    isLite ? "" : "Internal reasoning: wrap in <thought> tags.",
     "",
     ...safetySection,
     // Skip self-update for subagent/none/lite modes
