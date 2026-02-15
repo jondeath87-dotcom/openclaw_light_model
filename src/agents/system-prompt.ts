@@ -312,11 +312,20 @@ export function buildAgentSystemPrompt(params: {
   const toolLines = enabledTools.map((tool) => {
     const summary = coreToolSummaries[tool] ?? externalToolSummaries.get(tool);
     const name = resolveToolName(tool);
+    if (params.promptMode === "lite") {
+      // Keep it extremely short for lite mode to reduce TTFT/latency
+      const shortSummary = summary ? summary.split(/[.;(]/)[0].trim() : "";
+      return shortSummary ? `- ${name}: ${shortSummary}` : `- ${name}`;
+    }
     return summary ? `- ${name}: ${summary}` : `- ${name}`;
   });
   for (const tool of extraTools.toSorted()) {
     const summary = coreToolSummaries[tool] ?? externalToolSummaries.get(tool);
     const name = resolveToolName(tool);
+    if (params.promptMode === "lite") {
+      const shortSummary = summary ? summary.split(/[.;(]/)[0].trim() : "";
+      return shortSummary ? `- ${name}: ${shortSummary}` : `- ${name}`;
+    }
     toolLines.push(summary ? `- ${name}: ${summary}` : `- ${name}`);
   }
 
@@ -427,10 +436,14 @@ export function buildAgentSystemPrompt(params: {
     "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
     "",
     "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
+    isLite
+      ? "Balance tool calls with conversational responses. Explain what you are doing in plain language."
+      : "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+    isLite
+      ? ""
+      : "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+    isLite ? "" : "Keep narration brief and value-dense; avoid repeating obvious steps.",
+    isLite ? "" : "Use plain human language for narration unless in a technical context.",
     "",
     ...safetySection,
     // Skip self-update for subagent/none/lite modes

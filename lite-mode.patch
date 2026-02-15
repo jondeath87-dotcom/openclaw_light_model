@@ -1,0 +1,262 @@
+From 1459fc0e8d92aa641fdab9ad339fe6221aa124c4 Mon Sep 17 00:00:00 2001
+From: Antigravity <antigravity@google.com>
+Date: Sat, 14 Feb 2026 15:00:12 +0100
+Subject: [PATCH] feat: implement lite mode for small local LLMs (e.g. 7B
+ models)
+
+---
+ node                                          |  0
+ pnpm                                          |  0
+ .../pi-embedded-runner/system-prompt.ts       | 14 +++-
+ src/agents/system-prompt.test.ts              | 32 ++++++++
+ src/agents/system-prompt.ts                   | 82 ++++++++++++-------
+ 5 files changed, 99 insertions(+), 29 deletions(-)
+ create mode 100644 node
+ create mode 100644 pnpm
+
+diff --git a/node b/node
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/pnpm b/pnpm
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/src/agents/pi-embedded-runner/system-prompt.ts b/src/agents/pi-embedded-runner/system-prompt.ts
+index bc040f5e3..fe05581c0 100644
+--- a/src/agents/pi-embedded-runner/system-prompt.ts
++++ b/src/agents/pi-embedded-runner/system-prompt.ts
+@@ -49,6 +49,18 @@ export function buildEmbeddedSystemPrompt(params: {
+   contextFiles?: EmbeddedContextFile[];
+   memoryCitationsMode?: MemoryCitationsMode;
+ }): string {
++  const model = params.runtimeInfo.model.toLowerCase();
++  const isSmallModel =
++    model.includes("7b") ||
++    model.includes("8b") ||
++    model.includes("mini") ||
++    model.includes("lite") ||
++    model.includes("deepseek-r1-distill-qwen-7b") || // Specific common Ollama models
++    model.includes("llama-3.1-8b") ||
++    model.includes("mistral-7b");
++
++  const promptMode = params.promptMode ?? (isSmallModel ? "lite" : "full");
++
+   return buildAgentSystemPrompt({
+     workspaceDir: params.workspaceDir,
+     defaultThinkLevel: params.defaultThinkLevel,
+@@ -62,7 +74,7 @@ export function buildEmbeddedSystemPrompt(params: {
+     ttsHint: params.ttsHint,
+     workspaceNotes: params.workspaceNotes,
+     reactionGuidance: params.reactionGuidance,
+-    promptMode: params.promptMode,
++    promptMode,
+     runtimeInfo: params.runtimeInfo,
+     messageToolHints: params.messageToolHints,
+     sandboxInfo: params.sandboxInfo,
+diff --git a/src/agents/system-prompt.test.ts b/src/agents/system-prompt.test.ts
+index 7b2d97188..6d808a04d 100644
+--- a/src/agents/system-prompt.test.ts
++++ b/src/agents/system-prompt.test.ts
+@@ -425,4 +425,36 @@ describe("buildAgentSystemPrompt", () => {
+     expect(prompt).toContain("## Reactions");
+     expect(prompt).toContain("Reactions are enabled for Telegram in MINIMAL mode.");
+   });
++
++  it("streamlines the prompt in lite mode", () => {
++    const prompt = buildAgentSystemPrompt({
++      workspaceDir: "/tmp/openclaw",
++      promptMode: "lite",
++      skillsPrompt: "<available_skills>...</available_skills>",
++      docsPath: "/tmp/openclaw/docs",
++      toolNames: ["read", "write", "message"],
++      extraSystemPrompt: "Lite details",
++    });
++
++    // Sections that should be simplified
++    expect(prompt).toContain("## Safety");
++    expect(prompt).toContain("Prioritize safety and oversight.");
++    expect(prompt).not.toContain("Inspiration by Anthropic's constitution");
++
++    // Sections that should be present but simplified
++    expect(prompt).toContain("## Documentation");
++    expect(prompt).toContain("OpenClaw docs: /tmp/openclaw/docs");
++    expect(prompt).not.toContain("Mirror: https://docs.openclaw.ai");
++
++    // Sections that should be omitted
++    expect(prompt).not.toContain("## Skills");
++    expect(prompt).not.toContain("## Memory Recall");
++    expect(prompt).not.toContain("## OpenClaw Self-Update");
++    expect(prompt).not.toContain("## OpenClaw CLI Quick Reference");
++    expect(prompt).not.toContain("## Silent Replies");
++
++    // Context should still be present
++    expect(prompt).toContain("## Group Chat Context");
++    expect(prompt).toContain("Lite details");
++  });
+ });
+diff --git a/src/agents/system-prompt.ts b/src/agents/system-prompt.ts
+index 36ab37060..3753a3977 100644
+--- a/src/agents/system-prompt.ts
++++ b/src/agents/system-prompt.ts
+@@ -9,16 +9,18 @@ import { listDeliverableMessageChannels } from "../utils/message-channel.js";
+  * Controls which hardcoded sections are included in the system prompt.
+  * - "full": All sections (default, for main agent)
+  * - "minimal": Reduced sections (Tooling, Workspace, Runtime) - used for subagents
++ * - "lite": Compressed sections for smaller (e.g., 7B) models
+  * - "none": Just basic identity line, no sections
+  */
+-export type PromptMode = "full" | "minimal" | "none";
++export type PromptMode = "full" | "minimal" | "lite" | "none";
+ 
+ function buildSkillsSection(params: {
+   skillsPrompt?: string;
+   isMinimal: boolean;
++  isLite: boolean;
+   readToolName: string;
+ }) {
+-  if (params.isMinimal) {
++  if (params.isMinimal || params.isLite) {
+     return [];
+   }
+   const trimmed = params.skillsPrompt?.trim();
+@@ -39,10 +41,11 @@ function buildSkillsSection(params: {
+ 
+ function buildMemorySection(params: {
+   isMinimal: boolean;
++  isLite: boolean;
+   availableTools: Set<string>;
+   citationsMode?: MemoryCitationsMode;
+ }) {
+-  if (params.isMinimal) {
++  if (params.isMinimal || params.isLite) {
+     return [];
+   }
+   if (!params.availableTools.has("memory_search") && !params.availableTools.has("memory_get")) {
+@@ -143,11 +146,19 @@ function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
+   return ["## Voice (TTS)", hint, ""];
+ }
+ 
+-function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
++function buildDocsSection(params: {
++  docsPath?: string;
++  isMinimal: boolean;
++  isLite: boolean;
++  readToolName: string;
++}) {
+   const docsPath = params.docsPath?.trim();
+   if (!docsPath || params.isMinimal) {
+     return [];
+   }
++  if (params.isLite) {
++    return ["## Documentation", `OpenClaw docs: ${docsPath}`, ""];
++  }
+   return [
+     "## Documentation",
+     `OpenClaw docs: ${docsPath}`,
+@@ -347,27 +358,37 @@ export function buildAgentSystemPrompt(params: {
+   const inlineButtonsEnabled = runtimeCapabilitiesLower.has("inlinebuttons");
+   const messageChannelOptions = listDeliverableMessageChannels().join("|");
+   const promptMode = params.promptMode ?? "full";
++  const isLite = promptMode === "lite";
+   const isMinimal = promptMode === "minimal" || promptMode === "none";
+-  const safetySection = [
+-    "## Safety",
+-    "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
+-    "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
+-    "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
+-    "",
+-  ];
++  const safetySection = isLite
++    ? [
++        "## Safety",
++        "Prioritize safety and oversight. Do not bypass safeguards or pursue independent goals.",
++        "",
++      ]
++    : [
++        "## Safety",
++        "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
++        "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
++        "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
++        "",
++      ];
+   const skillsSection = buildSkillsSection({
+     skillsPrompt,
+     isMinimal,
++    isLite,
+     readToolName,
+   });
+   const memorySection = buildMemorySection({
+     isMinimal,
++    isLite,
+     availableTools,
+     citationsMode: params.memoryCitationsMode,
+   });
+   const docsSection = buildDocsSection({
+     docsPath: params.docsPath,
+     isMinimal,
++    isLite,
+     readToolName,
+   });
+   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
+@@ -412,20 +433,9 @@ export function buildAgentSystemPrompt(params: {
+     "Use plain human language for narration unless in a technical context.",
+     "",
+     ...safetySection,
+-    "## OpenClaw CLI Quick Reference",
+-    "OpenClaw is controlled via subcommands. Do not invent commands.",
+-    "To manage the Gateway daemon service (start/stop/restart):",
+-    "- openclaw gateway status",
+-    "- openclaw gateway start",
+-    "- openclaw gateway stop",
+-    "- openclaw gateway restart",
+-    "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
+-    "",
+-    ...skillsSection,
+-    ...memorySection,
+-    // Skip self-update for subagent/none modes
+-    hasGateway && !isMinimal ? "## OpenClaw Self-Update" : "",
+-    hasGateway && !isMinimal
++    // Skip self-update for subagent/none/lite modes
++    hasGateway && !isMinimal && !isLite ? "## OpenClaw Self-Update" : "",
++    hasGateway && !isMinimal && !isLite
+       ? [
+           "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
+           "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
+@@ -433,7 +443,23 @@ export function buildAgentSystemPrompt(params: {
+           "After restart, OpenClaw pings the last active session automatically.",
+         ].join("\n")
+       : "",
+-    hasGateway && !isMinimal ? "" : "",
++    hasGateway && !isMinimal && !isLite ? "" : "",
++    isLite ? "" : "## OpenClaw CLI Quick Reference",
++    isLite
++      ? ""
++      : [
++          "OpenClaw is controlled via subcommands. Do not invent commands.",
++          "To manage the Gateway daemon service (start/stop/restart):",
++          "- openclaw gateway status",
++          "- openclaw gateway start",
++          "- openclaw gateway stop",
++          "- openclaw gateway restart",
++          "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
++        ].join("\n"),
++    isLite ? "" : "",
++    "",
++    ...skillsSection,
++    ...memorySection,
+     "",
+     // Skip model aliases for subagent/none modes
+     params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
+@@ -568,8 +594,8 @@ export function buildAgentSystemPrompt(params: {
+     }
+   }
+ 
+-  // Skip silent replies for subagent/none modes
+-  if (!isMinimal) {
++  // Skip silent replies for subagent/none/lite modes
++  if (!isMinimal && !isLite) {
+     lines.push(
+       "## Silent Replies",
+       `When you have nothing to say, respond with ONLY: ${SILENT_REPLY_TOKEN}`,
+-- 
+2.52.0
+

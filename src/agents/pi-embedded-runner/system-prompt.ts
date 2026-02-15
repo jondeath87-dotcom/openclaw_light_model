@@ -61,6 +61,12 @@ export function buildEmbeddedSystemPrompt(params: {
 
   const promptMode = params.promptMode ?? (isSmallModel ? "lite" : "full");
 
+  if (promptMode === "lite") {
+    console.log(
+      `[openclaw] 💡 Using 'lite' prompt mode for small model: ${params.runtimeInfo.model}`,
+    );
+  }
+
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
     defaultThinkLevel: params.defaultThinkLevel,
