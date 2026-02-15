@@ -437,7 +437,7 @@ export function buildAgentSystemPrompt(params: {
     "",
     "## Tool Call Style",
     isLite
-      ? "Balance tool calls with conversational responses. Explain what you are doing in plain language."
+      ? "MANDATORY: Always start your reply with a conversational explanation in plain human language. Do not output only code blocks. Talk to the user first."
       : "Default: do not narrate routine, low-risk tool calls (just call the tool).",
     isLite
       ? ""

@@ -55,6 +55,7 @@ export function buildEmbeddedSystemPrompt(params: {
     model.includes("8b") ||
     model.includes("mini") ||
     model.includes("lite") ||
+    model.includes("qwen") ||
     model.includes("deepseek-r1-distill-qwen-7b") || // Specific common Ollama models
     model.includes("llama-3.1-8b") ||
     model.includes("mistral-7b");
