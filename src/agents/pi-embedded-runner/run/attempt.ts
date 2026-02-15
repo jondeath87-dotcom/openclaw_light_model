@@ -341,7 +341,22 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : undefined;
+    const modelName = params.modelId.toLowerCase();
+    const isSmallModel =
+      modelName.includes("7b") ||
+      modelName.includes("8b") ||
+      modelName.includes("mini") ||
+      modelName.includes("lite") ||
+      modelName.includes("qwen") ||
+      modelName.includes("deepseek-r1-distill-qwen-7b") ||
+      modelName.includes("llama-3.1-8b") ||
+      modelName.includes("mistral-7b");
+
+    const promptMode = isSubagentSessionKey(params.sessionKey)
+      ? "minimal"
+      : isSmallModel
+        ? "lite"
+        : undefined;
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
@@ -477,6 +492,7 @@ export async function runEmbeddedAttempt(
 
       const allCustomTools = [...customTools, ...clientToolDefs];
 
+      const useNativeTools = promptMode !== "lite";
       ({ session } = await createAgentSession({
         cwd: resolvedWorkspace,
         agentDir,
@@ -484,8 +500,8 @@ export async function runEmbeddedAttempt(
         modelRegistry: params.modelRegistry,
         model: params.model,
         thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: builtInTools,
-        customTools: allCustomTools,
+        tools: useNativeTools ? builtInTools : [],
+        customTools: useNativeTools ? allCustomTools : [],
         sessionManager,
         settingsManager,
       }));

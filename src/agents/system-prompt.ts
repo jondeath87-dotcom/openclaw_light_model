@@ -425,7 +425,9 @@ export function buildAgentSystemPrompt(params: {
       "",
       `It is currently ${params.userTime || "unknown"} in ${params.userTimezone || "unknown"}.`,
       "",
-      "You have access to some internal tools to help the user. If you use a tool, explain briefly what you are doing first.",
+      "You have access to some internal tools. To use a tool, explain what you are doing first, then use this EXACT format:",
+      '<call:tool_name>{"arg": "value"}</call>',
+      "",
       "Internal Tools:",
       toolLines.length > 0
         ? toolLines.join("\n")
@@ -446,7 +448,7 @@ export function buildAgentSystemPrompt(params: {
       }
     }
 
-    liteLines.push("Reply directly in this chat. Keep it conversational.");
+    liteLines.push("Reply directly in this chat. Keep it conversational. Remember: Talk first!");
 
     return liteLines.filter(Boolean).join("\n");
   }
