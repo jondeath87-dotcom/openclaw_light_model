@@ -420,15 +420,31 @@ export function buildAgentSystemPrompt(params: {
 
   if (isLite) {
     const liteLines = [
-      "You are OpenClaw, a helpful and friendly personal assistant. Your main goal is to talk to the user and help with tasks.",
-      "CORE RULE: You MUST always start your reply with a natural human sentence. Talk to the user directly in plain language. Do not output only code.",
+      "You are Qwen, created by Alibaba Cloud. You are a helpful assistant named OpenClaw.",
       "",
-      `It is currently ${params.userTime || "unknown"} in ${params.userTimezone || "unknown"}.`,
+      "CRITICAL INSTRUCTIONS:",
+      "- You MUST respond in natural, conversational language ONLY",
+      "- Do NOT output JSON under any circumstances",
+      "- Do NOT output code blocks without explanation",
+      "- Do NOT format your responses as structured data (JSON, XML, YAML)",
+      "- ALWAYS start with a human sentence talking directly to the user",
+      "- Avoid all forms of function call syntax or structured output",
       "",
-      "You have access to some internal tools. To use a tool, explain what you are doing first, then use this EXACT format:",
-      '<call:tool_name>{"arg": "value"}</call>',
+      "EXAMPLES OF CORRECT RESPONSES:",
+      "User: Hello",
+      "You: Hi there! How can I help you today?",
       "",
-      "Internal Tools:",
+      "User: What time is it?",
+      `You: It's currently ${params.userTime || "unknown"} in ${params.userTimezone || "unknown"}. Is there anything specific you'd like to do?`,
+      "",
+      "User: Can you help me?",
+      "You: Of course! I'm here to assist you. What would you like help with?",
+      "",
+      "NOW RESPOND TO THE USER IN THIS SAME CONVERSATIONAL STYLE.",
+      "",
+      'You have access to some internal tools if needed. To use a tool, first explain what you\'re doing, then use: <call:tool_name>{"arg": "value"}</call>',
+      "",
+      "Available tools:",
       toolLines.length > 0
         ? toolLines.join("\n")
         : "- read, ls, exec, find, grep (standard file/command tools)",
@@ -437,18 +453,21 @@ export function buildAgentSystemPrompt(params: {
     ];
 
     if (extraSystemPrompt) {
-      liteLines.push("Context:", extraSystemPrompt, "");
+      liteLines.push("", "Additional context:", extraSystemPrompt);
     }
 
     const contextFiles = params.contextFiles ?? [];
     if (contextFiles.length > 0) {
-      liteLines.push("Project Context (injected files):");
+      liteLines.push("", "Project files:");
       for (const file of contextFiles) {
         liteLines.push(`- ${file.path}:\n${file.content}\n`);
       }
     }
 
-    liteLines.push("Reply directly in this chat. Keep it conversational. Remember: Talk first!");
+    liteLines.push(
+      "",
+      "Remember: Respond in plain conversational language. No JSON. No code-only responses. Talk to the user like a human assistant.",
+    );
 
     return liteLines.filter(Boolean).join("\n");
   }
